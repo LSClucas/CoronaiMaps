@@ -1,0 +1,370 @@
+SET ThousandSep='.';
+SET DecimalSep=',';
+SET MoneyThousandSep='.';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='R$#.##0,00;-R$#.##0,00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='pt-BR';
+SET CreateSearchIndexOnReload=1;
+SET MonthNames='jan;fev;mar;abr;mai;jun;jul;ago;set;out;nov;dez';
+SET LongMonthNames='janeiro;fevereiro;março;abril;maio;junho;julho;agosto;setembro;outubro;novembro;dezembro';
+SET DayNames='seg;ter;qua;qui;sex;sáb;dom';
+SET LongDayNames='segunda-feira;terça-feira;quarta-feira;quinta-feira;sexta-feira;sábado;domingo';
+SET NumericalAbbreviation='3:k;6:Mi;9:Bi;12:Tri;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+​
+​//Map para Trocar o Nome do Estado para a Sigla(Padrão nas outras tabelas)
+mapUF:
+mapping 
+LOAD 
+	* 
+Inline [
+  NomeUF, CodUF
+  Acre, AC
+  Alagoas, AL
+  Amapá, AP
+  Amazonas, AM
+  Bahia, BA
+  Ceará, CE
+  Distrito Federal, DF
+  Espírito Santo, ES
+  Goiás, GO
+  Maranhão, MA
+  Mato Grosso, MT
+  Mato Grosso do Sul, MS
+  Minas Gerais, MG
+  Pará, PA
+  Paraíba, PB
+  Paraná, PR
+  Pernambuco, PE
+  Piauí, PI
+  Rio de Janeiro, RJ
+  Rio Grande do Norte, RN
+  Rio Grande do Sul, RS
+  Rondônia, RO
+  Roraima, RR
+  Santa Catarina, SC
+  São Paulo, SP
+  Sergipe, SE
+  Tocantins, TO
+];
+
+//Mapping inline de Capitais por Estados
+tempMAP:
+LOAD * Inline [
+Capital, Estado
+Rio Branco, Acre
+Maceió, Alagoas
+Macapá, Amapá
+Manaus, Amazonas
+Salvador, Bahia
+Fortaleza, Ceará
+Brasília, Distrito Federal
+Vitória, Espírito Santo
+Goiânia, Goiás
+São Luís, Maranhão
+Cuiabá, Mato Grosso
+Campo Grande, Mato Grosso do Sul
+Belo Horizonte, Minas Gerais
+Belém, Pará
+João Pessoa, Paraíba
+Curitiba, Paraná
+Recife, Pernambuco
+Teresina, Piauí
+Rio de Janeiro, Rio de Janeiro
+Natal, Rio Grande do Norte
+Porto Alegre, Rio Grande do Sul
+Porto Velho, Rondônia
+Boa Vista, Roraima
+Florianópolis, Santa Catarina
+São Paulo, São Paulo
+Aracaju, Sergipe
+Palmas, Tocantins
+];
+
+//mapping utilizado para identificar qual municipio é capital
+MapFlag:
+Mapping Load
+	Replace(trim(Estado & Capital), ' ', '') as chaveMAP,
+	Capital
+Resident tempMAP;
+
+//Tabela de Municipios, lido o QVD feito no projeto Dados Abertos
+Municipios:
+LOAD
+	*,
+    if(match([chaveMAP], ApplyMap('MapFlag', [chaveMAP])), 0, 1) as FlagCapital;
+LOAD
+	ApplyMap('mapUF', UF) as UF,
+    UF as UFdesc,
+    Replace(trim(UF & Município), ' ', '') as chaveMAP,
+    "Cod Município IBGE",
+    "Cod UF",
+    "Cod Mesorregião",
+    Mesorregião,
+    "Cod Microrregião",
+    Microrregião,
+    "Cod Município Completo",
+    Município,
+    "Cod Distrito",
+    Distrito,
+    Região,
+    Longitude,
+    Latitude
+FROM [lib://Root/999.Compartilhados/1.QVD/3.Load/Municipios.qvd]
+(qvd);
+
+DROP Table tempMAP;
+
+[Corona Brasil]:
+LOAD
+    ApplyMap('mapUF', state) as UF,
+    Date("date") as Data,
+    suspects     as Suspeitos,
+    cases        as Casos,
+    deaths       as Mortes
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Corona BR/brazil_covid19.csv]
+(txt, utf8, embedded labels, delimiter is ',', msq);
+
+//Tabela do PIB, 
+PIB:
+LOAD
+    Ano,
+    LEFT("Código do Município", 6)                      as "Cod Município IBGE", //Cod IBGE padrão possue apenas o 6 primeiros digitos
+    "Sigla da Unidade da Federação",
+    "Nome da Mesorregião",
+       "Valor adicionado bruto da Agropecuária, 
+a preços correntes
+(R$ 1.000)" * 1000                                      as "Valor Bruto Agropecuária",
+    "Valor adicionado bruto da Indústria,
+a preços correntes
+(R$ 1.000)" * 1000                                      as "Valor Bruto Indústria",
+    "Valor adicionado bruto dos Serviços,
+a preços correntes 
+- exceto Administração, defesa, educação e saúde públicas e seguridade social
+(R$ 1.000)" * 1000                                      as "Valor Bruto Serviços",
+    "Valor adicionado bruto da Administração, defesa, educação e saúde públicas e seguridade social, 
+a preços correntes
+(R$ 1.000)" * 1000                                      as "Valor Bruto Administração",
+    "Valor adicionado bruto total, 
+a preços correntes
+(R$ 1.000)" * 1000                                      as "Valor Bruto Total",
+    "Impostos, líquidos de subsídios, sobre produtos, 
+a preços correntes
+(R$ 1.000)" * 1000                                      as "Impostos sobre produtos",
+    "Produto Interno Bruto, 
+a preços correntes
+(R$ 1.000)" * 1000                                      as "PIB",
+    "Produto Interno Bruto per capita, 
+a preços correntes
+(R$ 1,00)"                                              as "PIB per Capta",
+"Atividade com maior valor adicionado bruto"            as "Atividade com maior Valor Bruto",
+"Atividade com segundo maior valor adicionado bruto"    as "Atividade com Segundo maior Valor Bruto",
+"Atividade com terceiro maior valor adicionado bruto"   as "Atividade com Terceiro maior Valor Bruto"
+FROM [[lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/PIB/PIB dos Municípios - base de dados 2010-2017.xls]
+(biff, embedded labels, table is PIB_dos_Municípios$)
+WHERE Ano = 2017;
+​
+map_total_uf:
+mapping load
+    "Sigla da Unidade da Federação",
+    sum( PIB) as PIB_UF
+resident PIB
+Group by "Sigla da Unidade da Federação";
+​
+[PIB Meso]:
+Load
+    "Sigla da Unidade da Federação" as UF,
+    "Nome da Mesorregião"           as Meso,
+    sum(PIB) / APPLYMAP('map_total_uf',"Sigla da Unidade da Federação") as %Meso
+resident PIB
+Group by "Sigla da Unidade da Federação", "Nome da Mesorregião";
+​
+​//Tabela Inline para remover os acentos do nome dos municipios
+acento:
+MAPPING LOAD * INLINE [
+    F1, F2
+    À, A
+    Á, A
+    Ã, A
+    Â, A
+    É, E
+    Ê, E
+    Í, I
+    Î, I
+    Ó, O
+    Õ, O
+    Ô, O
+    Û, U
+    Ü, U
+    Ú, U
+    Ç, C
+];
+
+//Tabela com todos os municípios do Brasil com seu respectivo Código do IBGE
+CodIBGE:
+LOAD
+    UF & Município as [Município],
+    "Cod Município IBGE"
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Municipios/CodIBGE.xlsx]
+(ooxml, embedded labels, table is Sheet1);
+
+//Map para adicionar o Código do IBGE na tabela de População, o map é feito através da UF + Nome do estado
+mapCodIBGE:
+Mapping Load
+	AutoNumberHash128(replace(MapSubString('acento',upper( replace(trim(SubField(Município, '(', 1)) ,chr(39)&chr(39),chr(39)) )), ' ', '')) as ChaveMunicipio,
+    "Cod Município IBGE"
+resident CodIBGE;
+
+//Tabela de população
+População:
+LOAD 
+	*,
+    ApplyMap('mapCodIBGE', ChaveMunicipio) as "Cod Município IBGE";
+LOAD
+   	AutoNumberHash128(replace(MapSubString('acento',upper( replace(Right(trim(PurgeChar(Município, '()')), 2) & trim(SubField(Município, '(', 1)) ,chr(39)&chr(39),chr(39)) )), ' ', '')) as ChaveMunicipio,
+    //trim(SubField(Município, '(', 1)) as Municipio,
+    Idade,
+    if(num(left(trim(Idade), 3)) >= 60, 1, 0) as FlagIdoso,
+    num("Qtde Pessoas") as "Qtde Pessoas"
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Populacao/tabela1378.xlsx]
+(ooxml, embedded labels, table is Tabela, filters(replace(1, top, StrCnd(null))));
+
+drop Table CodIBGE;
+
+
+//Tabela FATO de Hoteis, são as informações dos numeros de leitos por estados e por capitais ligadas com join na tabela Fato de Municipios
+[Leitos Hotéis]:
+LOAD
+	ApplyMap('mapUF', @1) as UF,
+    @1 as UFdesc,
+    @2 as "Qtde Unidades Habitacionais (UF)",
+    @5 as "Qtde Leitos Simples (UF)",
+    @6 as "Qtde Leitos Duplos (UF)",
+    (@5 + (@6 * 2)) as "Qtde Leitos Total (UF)"
+    //ApplyMap('MapQtdeMunicipios', @1) as "Qtde Municipios"
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Hoteis/PSHTABELA3.xls]
+(biff, no labels, header is 4 lines, table is TAB3$)
+where not isnull([@2]);
+
+Drop Field UFdesc from [Leitos Hotéis];
+
+
+//tabela fato de Leitos por hospitais
+[Leitos Hospitalares]:
+//leitos Internação SUS e Não SUS
+LOAD
+    Subfield(trim(Município), ' ',1) 	as "Cod Município IBGE",
+    "Quantidade SUS"					as "Qtde leitos Hospitais",
+    'Internação' 						as "Tipo de Leito",
+    'SUS'								as Categoria
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Leitos Hospitalares/Hospitalar - Leitos Internação - SUS.csv]
+(txt, utf8, embedded labels, delimiter is ';', msq);
+
+LOAD
+    Subfield(trim(Município), ' ',1) 	as "Cod Município IBGE",
+    "Quantidade Não SUS"				as "Qtde leitos Hospitais",
+    'Internação' 						as "Tipo de Leito",
+    'Não SUS'							as Categoria
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Leitos Hospitalares/Hospitalar - Leitos Internação - Não SUS.csv]
+(txt, utf8, embedded labels, delimiter is ';', msq);
+
+
+//leitos Complementares SUS e Não SUS
+LOAD
+    Subfield(trim(Município), ' ',1) 	as "Cod Município IBGE",
+    "Quantidade SUS"					as "Qtde leitos Hospitais",
+    'Complementar' 						as "Tipo de Leito",
+    'SUS'								as Categoria
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Leitos Hospitalares/Hospitalar - Leitos Complementares - SUS.csv]
+(txt, utf8, embedded labels, delimiter is ';', msq);
+
+LOAD
+    Subfield(trim(Município), ' ',1) 	as "Cod Município IBGE",
+    "Quantidade Não SUS"				as "Qtde leitos Hospitais",
+    'Complementar' 						as "Tipo de Leito",
+    'Não SUS'							as Categoria
+FROM [lib://Fonte de Dados (ec2amaz-8am7hg0_lucas.carvalho)/Leitos Hospitalares/Hospitalar - Leitos Complementares - Não SUS.csv]
+(txt, utf8, embedded labels, delimiter is ';', msq);
+
+LIB CONNECT TO 'REST_httpsopendata.ecdc.europa.eucovid19casedistributionjson';
+
+
+RestConnectorMasterTable:
+LOAD 
+	Date#([dateRep],'DD-MM-YYYY') as [dateRep],
+	[cases],
+	[deaths],
+	[countriesAndTerritories],
+	[countryCode],
+	[popData2018];
+SQL SELECT 
+	"dateRep",
+	"day",
+	"month",
+	"year",
+	"cases",
+	"deaths",
+	"countriesAndTerritories",
+	"countryCode",
+	"popData2018"
+FROM JSON (wrap off) "records";
+
+[records]:
+NoConcatenate LOAD 
+	[dateRep],
+	[cases],
+    if([cases]>0,AutoNumber([dateRep],[countriesAndTerritories])) as seq,
+	[deaths],
+	[countriesAndTerritories],
+	[countryCode],
+	[popData2018],
+    if([countriesAndTerritories] = Peek('countriesAndTerritories'),[cases]+peek('total cases'),0) as [total cases]
+RESIDENT RestConnectorMasterTable
+Order by [countriesAndTerritories],"dateRep";
+
+first:Mapping Load [countriesAndTerritories],[dateRep] Resident [records] where seq=1;
+
+COUNTRY:
+MAPPING LOAD * Inline [
+DE,PARA
+United States Of America,United States
+"Korea, South", South Korea
+Congo, Republic Of The Congo
+Congo (Brazzaville), Republic Of The Congo
+Congo (Kinshasa), Democratic Republic Of The Congo
+Myanmar , Burma
+United Republic Of Tanzania,Tanzania
+North Macedonia, Macedonia
+Czech Republic, Czechia
+Brunei Darussalam, Brunei
+Cote Divoire, Cote D'Ivoire
+Cape Verde, Cabo Verde
+Cases On An International Conveyance Japan, Japan
+];
+
+[Corona Mundo]:
+NoConcatenate LOAD 
+	[dateRep] as DateRep,
+    num([dateRep]) as DateRepNum,
+	[cases] as Cases,
+    RangeMax(0,1+[dateRep]-ApplyMap('first',[countriesAndTerritories])) as DaysSinceFirst,
+	[deaths] as Deaths,
+	ApplyMap('COUNTRY',Capitalize(Replace([countriesAndTerritories],'_',' '))) AS [Country],
+    AutoNumber([countriesAndTerritories]) as ContCountry,
+	[countryCode],
+	[popData2018],
+    [total cases]
+RESIDENT [records];
+Drop Table [records];
+
+
+DROP TABLE RestConnectorMasterTable;
+
+
+let Exec = now();
